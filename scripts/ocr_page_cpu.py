@@ -12,6 +12,10 @@ a quantized GGUF served by llama-server. Serve it first:
 then read pages:
 
     python ocr_page_cpu.py page.png --out-dir out/
+    python ocr_page_cpu.py page.png --out-dir out/ --table-mode whole
+
+Tables are read cell by cell by default, since the 4-bit model reads a whole
+table poorly; --table-mode whole keeps the pipeline's own pass (see _wayu_ocr.py).
 
 --concurrency defaults to 4 to match `-np 4`: llama.cpp queues anything past its
 slot count, so more in-flight requests buy nothing and only lengthen the tail.

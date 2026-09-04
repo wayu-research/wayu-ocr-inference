@@ -10,6 +10,10 @@ Serve the weights first:
 then read pages:
 
     python ocr_page_vllm.py page.png --out-dir out/
+    python ocr_page_vllm.py page.png --out-dir out/ --table-mode cells
+
+Tables are read by the pipeline's own Table Recognition pass, which is right in
+bf16; --table-mode cells reads them cell by cell instead (see _wayu_ocr.py).
 
 PP-DocLayoutV3 runs locally through paddle; --layout-device cpu keeps the whole
 GPU for the recognizer, which is the right split when both share one card.

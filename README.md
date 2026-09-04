@@ -79,6 +79,7 @@ name. Then:
 ```bash
 python scripts/ocr_page_vllm.py page.png --out-dir out/
 python scripts/ocr_page_vllm.py scans/*.png --out-dir out/ --layout-device cpu
+python scripts/ocr_page_vllm.py page.png --out-dir out/ --table-mode cells   # tables cell by cell
 ```
 
 `--layout-device cpu` puts PP-DocLayoutV3 on the CPU and leaves the whole card to the
@@ -105,6 +106,7 @@ llama-server -m gguf/Wayu-Paxa-OCR-Zero-Q4_K_M.gguf \
 
 ```bash
 python scripts/ocr_page_cpu.py page.png --out-dir out/
+python scripts/ocr_page_cpu.py page.png --out-dir out/ --table-mode whole   # the pipeline's own table pass
 ```
 
 Four flags there are load-bearing:
