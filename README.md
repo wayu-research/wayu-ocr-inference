@@ -121,6 +121,14 @@ Four flags there are load-bearing:
 `--concurrency` on the client defaults to 4 to match `-np 4`. Raising it past the server's
 slot count buys nothing: llama.cpp queues the surplus and only the tail gets longer.
 
+> **A faster CPU engine exists, with no promises attached.** The
+> [demo Space](https://huggingface.co/spaces/kunato/wayu-paxa-ocr-zero-demo) serves these
+> same weights through a from-scratch Rust engine — int8 vision tower, 4-bit language model,
+> AVX-512/VNNI kernels — that decodes at about 50 tokens/s on the Space's two vCPU, well
+> ahead of llama.cpp on the same cores. It was written by Claude, lives in the demo's
+> repository, and is served there as-is: we take no responsibility for it and will not be
+> fixing its bugs. If that trade suits you, it is there.
+
 ## Output
 
 Both scripts write, per page, a `.md` (the page in reading order) and a `.json` (every
