@@ -35,7 +35,8 @@ def main() -> int:
 
     pipeline = W.build_pipeline("vllm-server", args.server_url, args.concurrency,
                                 device=args.layout_device, model_name=args.model_name)
-    W.run(pipeline, args.images, args.out_dir, args.pages_per_batch, gen=W.decoding(args))
+    W.run(pipeline, args.images, args.out_dir, args.pages_per_batch, gen=W.decoding(args),
+          table_mode=args.table_mode, layout_device=args.layout_device)
     return 0
 
 

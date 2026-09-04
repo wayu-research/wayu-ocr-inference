@@ -35,6 +35,18 @@ page ──► PP-DocLayoutV3 ──► regions in reading order ──► crops
 recognizer lives. Because the layout half is identical in both paths below, they differ
 only by what quantization costs.
 
+**Tables, on the CPU path, are read cell by cell.** Quantized to 4 bits, the model is
+not good at parsing a full table in one pass — handed a dense table as one crop it drops
+decimal points and fuses neighbouring cells — but read one cell at a time it is accurate.
+So `ocr_page_cpu.py` reads every table the pipeline finds a second time by default: a text
+detector (`PP-OCRv5_mobile_det`, through PaddleX) finds the cells, the recognizer reads
+each one through the same server with the same decoding, and the grid is rebuilt from
+where the cells sit — rows from the detector's lines, columns from the widest row. That
+reading replaces the pipeline's in the Markdown and the JSON. In bf16 under vLLM the
+pipeline's own Table Recognition pass reads the same tables correctly and faster, so
+`ocr_page_vllm.py` keeps it. `--table-mode` overrides either default. Merged cells are
+not reconstructed either way.
+
 **โมเดลนี้ไม่ได้อ่านข้อความจากทั้งหน้าในครั้งเดียว แต่ประมวลผลทีละ region** เนื่องจากตอนเทรน โมเดลเห็นเฉพาะภาพที่ crop จากแต่ละส่วนของเอกสาร ไม่ได้เห็นภาพหน้าเต็ม
 
 ดังนั้น การอ่านข้อความจากเอกสารหนึ่งหน้าต้องใช้สองขั้นตอน: ให้ **PP-DocLayoutV3** ตรวจหา region และจัดลำดับการอ่านก่อน จากนั้นจึงใช้โมเดลนี้อ่านข้อความในแต่ละ region
@@ -176,8 +188,9 @@ not a corpus — if a quantization artifact is what you are chasing, re-read the
   PP-DocLayoutV3, and its mistakes are yours.
 - **Handwriting is usable, not solved** — 20.55% median CER is a readable transcript with
   real errors in it.
-- **Forms, receipts and dense financial tables are the weak spot**; merged-cell tables tend
-  to end early.
+- **Forms, receipts and dense financial tables are the weak spot.** Read cell by cell (the
+  CPU path's default) a table cannot end early, but merged cells are not reconstructed, and
+  on cramped print the detector can fuse neighbouring cells into one.
 - **Thai and English only.** Other scripts are whatever the base checkpoint had.
 - **No training code.** This repository serves a checkpoint; it does not build one.
 

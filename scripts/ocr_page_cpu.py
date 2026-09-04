@@ -29,7 +29,9 @@ import _wayu_ocr as W
 
 
 def main() -> int:
-    ap = W.common_args(__doc__, "http://127.0.0.1:8080/v1", default_concurrency=4)
+    # Cell by cell: the Q4_K_M GGUF reads a whole table poorly (see _wayu_ocr.py).
+    ap = W.common_args(__doc__, "http://127.0.0.1:8080/v1", default_concurrency=4,
+                       default_table_mode="cells")
     ap.add_argument("--layout-device", default="cpu",
                     help="device for PP-DocLayoutV3 (default: cpu)")
     args = ap.parse_args()
@@ -44,7 +46,8 @@ def main() -> int:
     # `max_completion_tokens`. Naming it correctly is not cosmetic.
     pipeline = W.build_pipeline("llama-cpp-server", args.server_url, args.concurrency,
                                 device=args.layout_device, model_name=args.model_name)
-    W.run(pipeline, args.images, args.out_dir, args.pages_per_batch, gen=W.decoding(args))
+    W.run(pipeline, args.images, args.out_dir, args.pages_per_batch, gen=W.decoding(args),
+          table_mode=args.table_mode, layout_device=None)
     return 0
 
 

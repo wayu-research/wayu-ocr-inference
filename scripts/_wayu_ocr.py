@@ -12,6 +12,17 @@ different server:
 
 Nothing else differs -- same layout model, same reading order, same crops, same
 prompts -- so the two produce the same Markdown up to what quantization costs.
+
+Tables. Quantized to 4 bits -- the GGUF the CPU path serves -- the current
+model is not good at parsing a full table in one pass: handed a dense table as
+one crop it drops decimal points and fuses cells. Read one cell at a time it is
+accurate. So on the CPU path every table the pipeline finds is read a second
+time by default, cell by cell -- a text detector finds the cells, the
+recognizer reads each one through the same server, and the grid is rebuilt
+from where the cells sit -- and that reading replaces the pipeline's. See
+`_wayu_cells.py`. In bf16 under vLLM the pipeline's own Table Recognition pass
+reads the same tables correctly, and faster, so the GPU path keeps it.
+`--table-mode` overrides either default.
 """
 
 from __future__ import annotations
@@ -26,7 +37,8 @@ from pathlib import Path
 SERVED_NAME = "PaddleOCR-VL-1.6-0.9B"
 
 
-def common_args(description: str, default_url: str, default_concurrency: int):
+def common_args(description: str, default_url: str, default_concurrency: int,
+                default_table_mode: str = "whole"):
     ap = argparse.ArgumentParser(
         description=description, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("images", nargs="+", type=Path, help="page images (PNG/JPG) or PDFs")
@@ -48,6 +60,10 @@ def common_args(description: str, default_url: str, default_concurrency: int):
                     help="vLLM only; llama.cpp ignores it")
     ap.add_argument("--greedy", action="store_true",
                     help="temperature 0, no top-p, no repetition penalty (the paper's decoding)")
+    ap.add_argument("--table-mode", choices=("cells", "whole"), default=default_table_mode,
+                    help="cells: re-read each table cell by cell with a text detector; "
+                         "whole: keep the pipeline's own Table Recognition pass "
+                         f"(default: {default_table_mode})")
     return ap
 
 
@@ -100,11 +116,46 @@ def page_regions(result) -> list[dict]:
     return regions
 
 
+def page_image(result):
+    """The image the result's boxes are in: the preprocessed page, else the file."""
+    import cv2
+
+    pre = result.get("doc_preprocessor_res")
+    img = pre.get("output_img") if isinstance(pre, dict) else None
+    if img is None and isinstance(pre, dict) and isinstance(pre.get("img"), dict):
+        img = next(iter(pre["img"].values()), None)
+    return img if img is not None else cv2.imread(str(result["input_path"]))
+
+
+def reread_tables(pipeline, result, detector, gen: dict | None) -> int:
+    """Replace every table block's content with a cell-by-cell reading; return how many."""
+    import _wayu_cells as cells
+
+    image = page_image(result)
+    if image is None:
+        return 0
+    recognizer = pipeline.paddlex_pipeline.vl_rec_model
+    done = 0
+    for block in result["parsing_res_list"]:
+        if getattr(block, "label", None) != "table":
+            continue
+        table = cells.read_table(image, block.bbox, detector, recognizer, gen)
+        if table is not None:
+            block.content = table
+            done += 1
+    return done
+
+
 def run(pipeline, images: list[Path], out_dir: Path | None, pages_per_batch: int,
-        gen: dict | None = None) -> int:
+        gen: dict | None = None, table_mode: str = "whole", layout_device: str | None = None) -> int:
     """Read every page; return the number of pages done. `gen` holds the decoding kwargs."""
     if out_dir:
         out_dir.mkdir(parents=True, exist_ok=True)
+    detector = None
+    if table_mode == "cells":
+        from _wayu_cells import CellDetector
+
+        detector = CellDetector(device=layout_device)
 
     started, done = time.time(), 0
     for start in range(0, len(images), pages_per_batch):
@@ -115,6 +166,8 @@ def run(pipeline, images: list[Path], out_dir: Path | None, pages_per_batch: int
         # a whole chunk's crops arrive as one batch and the server fills.
         results = pipeline.predict([str(p) for p in batch], use_queues=False, **(gen or {}))
         for path, result in zip(batch, results):
+            if detector is not None:
+                reread_tables(pipeline, result, detector, gen)
             markdown = page_markdown(result)
             if out_dir:
                 (out_dir / f"{path.stem}.md").write_text(markdown, encoding="utf-8")
