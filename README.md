@@ -175,7 +175,9 @@ not a corpus — if a quantization artifact is what you are chasing, re-read the
   crops instead of JPEG and `max_tokens` instead of `max_completion_tokens`. Name it
   correctly.
 - **`min_pixels` / `max_pixels` are vLLM-only.** On llama.cpp the pipeline warns and ignores
-  them, so every crop — however small — pays the model's minimum image-token count.
+  them, so every crop — however small — pays the model's minimum image-token count. (The
+  cell-by-cell table path scales its own crops up before sending, so it does not depend on
+  them on either backend.)
 - **PP-DocLayoutV3 wants its own GPU memory.** vLLM reserves
   `--gpu-memory-utilization` of the card at startup, and paddle then fails to allocate on the
   same device. Lower it to ~0.7, send layout to another card (`--layout-device gpu:1`), or
@@ -183,6 +185,23 @@ not a corpus — if a quantization artifact is what you are chasing, re-read the
 - **Greedy decoding can loop on tables.** If you drive the recognizer yourself rather than
   through the pipeline, guard it with a mild repetition penalty (~1.1) rather than with
   temperature; temperature adds character noise on hard crops.
+- **The 4-bit model collapses on a dense table read whole.** Through llama.cpp Q4_K_M a
+  44-row page of ratings came back as one row — 0 of 77 spot-checked cells; read cell by cell
+  it came back 76 of 77. That is why `ocr_page_cpu.py` defaults to `--table-mode cells`.
+  In bf16 under vLLM the whole-table pass reads the same page 77 of 77, so do not assume one
+  backend's table behaviour holds on the other — measure on the one you serve.
+- **Cell by cell is a call per cell.** A 300-cell table is ~300 recognizer requests. Through
+  vLLM they go as one concurrent batch (about 30 s for that page); through llama.cpp they
+  queue behind `-np`, which was twenty minutes on a busy workstation. Raise `-np` and
+  `--concurrency`, or pass `--table-mode whole` for tables the 4-bit model does handle
+  (a short, clearly ruled one).
+- **The cell detector is a second PaddleX model.** `PP-OCRv5_mobile_det` downloads itself
+  into `~/.paddlex/official_models/` on first use, like PP-DocLayoutV3; the first run of
+  `ocr_page_cpu.py` needs the network for it.
+- **Cramped print fuses cells.** On a dot-matrix receipt the detector welds neighbouring
+  cells into one box (`73.00 146.00`). A box that spans two column anchors is split at the
+  blank gap between them, but not every fusion leaves one. Merged header cells land in a
+  single column; the grid never reconstructs a span.
 
 ## Limitations
 
