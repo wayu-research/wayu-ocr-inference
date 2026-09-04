@@ -166,13 +166,11 @@ The CPU path is fifty times slower and needs no accelerator at all: llama-server
 That is the trade. It is a batch tool, not an interactive one — and hand it several pages at
 once, since a single page cannot keep four llama.cpp slots busy.
 
-**What quantization costs.** Reading the same pages through Q4_K_M on CPU and bf16 on the
-GPU, the two transcripts differ by 1.9% of characters on two clean born-digital receipts,
-by 13.2% on a phone photo of a dot-matrix carbon copy, and by 4.5% character-weighted over
-four pages. The pattern is the point: where the model is confident the quantized build
-agrees with it, and where it is already guessing it guesses differently. That is four pages,
-not a corpus — if a quantization artifact is what you are chasing, re-read the page with
-`Q8_0` or `F16` before believing it.
+**What quantization costs.** Q4_K_M is the fast build, not the accurate one. It holds up on
+clean born-digital pages and gives way on the long tail — dot-matrix carbon copies, tables,
+and the other hard pages the model was already unsure of. When the transcript has to be
+right, read those pages at full precision: `Q8_0` or `F16` on this path, or the safetensors
+on the GPU path above.
 
 ## Gotchas
 
